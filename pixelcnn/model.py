@@ -84,12 +84,15 @@ class GatedBlock(nn.Module):
                                    mask_type='B',
                                    data_channels=data_channels)
 
-        self.label_embedding = nn.Embedding(10, 2*out_channels)
+        self.label_embedding = torch.nn.Sequential(torch.nn.Conv2d(64,
+                                                                   2*64, kernel_size,
+                                                                   padding=kernel_size//2), torch.nn.ReLU())
+        self.label_embedding[0].bias.data *= 0
 
     def forward(self, x):
         v_in, h_in, skip, label = x[0], x[1], x[2], x[3]
 
-        label_embedded = self.label_embedding(label).unsqueeze(2).unsqueeze(3)
+        label_embedded = self.label_embedding(label)
 
         v_out, v_shifted = self.v_conv(v_in)
         v_out += self.v_fc(v_in)
@@ -120,7 +123,7 @@ class PixelCNN(nn.Module):
     def __init__(self, cfg):
         super(PixelCNN, self).__init__()
 
-        DATA_CHANNELS = 3
+        DATA_CHANNELS = 2
 
         self.hidden_fmaps = cfg.hidden_fmaps
         self.color_levels = cfg.color_levels
@@ -133,8 +136,6 @@ class PixelCNN(nn.Module):
         self.hidden_conv = nn.Sequential(
             *[GatedBlock(cfg.hidden_fmaps, cfg.hidden_fmaps, cfg.hidden_ksize, DATA_CHANNELS) for _ in range(cfg.hidden_layers)]
         )
-
-        self.label_embedding = nn.Embedding(10, self.hidden_fmaps)
 
         self.out_hidden_conv = MaskedConv2d(cfg.hidden_fmaps,
                                             cfg.out_hidden_fmaps,
@@ -158,10 +159,7 @@ class PixelCNN(nn.Module):
                                          2: image.new_zeros((count, self.hidden_fmaps, height, width), requires_grad=True),
                                          3: label}).values()
 
-        label_embedded = self.label_embedding(label).unsqueeze(2).unsqueeze(3)
-
-        # add label bias
-        out += label_embedded
+        out += label
         out = F.relu(out)
         out = F.relu(self.out_hidden_conv(out))
         out = self.out_conv(out)
@@ -184,8 +182,10 @@ class PixelCNN(nn.Module):
                 for j in range(width):
                     for c in range(channels):
                         unnormalized_probs = self.forward(samples, labels)
-                        pixel_probs = torch.softmax(unnormalized_probs[:, :, c, i, j], dim=1)
-                        sampled_levels = torch.multinomial(pixel_probs, 1).squeeze().float() / (self.color_levels - 1)
+                        pixel_probs = torch.softmax(
+                            unnormalized_probs[:, :, c, i, j], dim=1)
+                        sampled_levels = torch.multinomial(
+                            pixel_probs, 1).squeeze().float() / (self.color_levels - 1)
                         samples[:, c, i, j] = sampled_levels
 
         return samples
