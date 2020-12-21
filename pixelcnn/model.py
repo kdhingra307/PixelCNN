@@ -85,7 +85,7 @@ class GatedBlock(nn.Module):
                                    data_channels=data_channels)
 
         self.label_embedding = torch.nn.Sequential(torch.nn.Conv2d(64,
-                                                                   2*64, kernel_size,
+                                                                   2*out_channels, kernel_size,
                                                                    padding=kernel_size//2), torch.nn.ReLU())
         self.label_embedding[0].bias.data *= 0
 
